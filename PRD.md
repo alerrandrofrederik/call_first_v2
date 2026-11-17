@@ -273,6 +273,8 @@ ai_extract(
 | RF-15 | Tela **Visão do Gestor**: funil do dia (recebidos → classificados → na fila → contatados) e distribuição por intenção e canal. |
 | RF-16 | **Agente conversacional** integrado ao app (Genie Space sobre as tabelas Gold, via Genie Conversation API) respondendo perguntas sobre leads em português. |
 
+> Layout e navegação das telas RF-13 a RF-16 seguem a seção **2.8 · Referência visual**.
+
 ## 2.7 Regra de negócio: nota de prioridade
 
 ```
@@ -313,6 +315,31 @@ Integrado ao app como um painel de chat, conectado a um **Genie Space** configur
 3. "Qual canal trouxe mais leads de compra imediata nesta semana?"
 4. "Quais leads citaram concorrente?"
 5. "Quantos leads da minha fila eu já contatei?"
+
+### Referência visual
+
+O Data App segue o **padrão visual e de navegação** das telas em [`DataApp_de_referencia/`](DataApp_de_referencia/). São prints de outro Data App feito em Databricks Apps. A referência vale para layout e componentes. O conteúdo é o do Call First.
+
+| Visão geral | Agente |
+|---|---|
+| ![Visão geral de referência](DataApp_de_referencia/DataApp.png) | ![Agente de referência](DataApp_de_referencia/Agente_Copilot.png) |
+
+**O que reaproveitar:**
+
+| Padrão da referência | No Call First |
+|---|---|
+| Sidebar escura com a marca, menu em grupos (título + subtítulo técnico) e status dos serviços no rodapé | Menu: **Fila do Dia** · **Visão do Gestor** · **Agente** · **Plataforma**. Status no rodapé: SQL Warehouse · Genie |
+| Banner (hero) com a frase do dia em números + 2 botões de ação | "20 leads na fila hoje · 33 de compra imediata · 13 ficaram de fora", com os botões **Ver minha fila** e **Perguntar ao agente** |
+| Linha de KPI cards com borda de cor semântica e a tabela de origem no rodapé do card | Recebidos · Classificados · Na fila · Contatados · % compra imediata · Acurácia da IA (origem: `GOLD.FILA_DO_DIA`, `GOLD.LEADS_CLASSIFICADOS`) |
+| Faixa "Da fonte à decisão" com etapas numeradas | CSV → Volume → Bronze → Silver → Gold (`ai_classify` / `ai_extract`) → Genie → App |
+| Filtros globais no topo + selo "Demo · dados 100% sintéticos" | Filtros de **Vendedor** e **Canal**; mesmo selo de dados sintéticos |
+| Tela do agente com cards de perguntas sugeridas e chips das ferramentas usadas | Cards com as perguntas do roteiro acima; chips **Genie** · **SQL Warehouse** |
+| Alternância de tema claro/escuro | Mantém |
+
+**O que não entra:**
+- A marca, os nomes e os dados da referência.
+- Lakebase, Vector Search, Model Serving e LLM externo: estão fora do escopo (D-04, D-05). O agente é o Genie Space.
+- Simulador e ações gravadas em OLTP. O "contatado" continua numa tabela Delta de feedback (RF-14).
 
 ## 2.9 Arquitetura
 
