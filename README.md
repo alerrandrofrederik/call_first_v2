@@ -311,6 +311,27 @@ URL: https://call-first-1835011522269435.aws.databricksapps.com
 
 CA-09 ✅: marquei o lead 0258 como contatado na tela. A linha apareceu em `gold.feedback_contatos`, o contador foi para "1 de 20" e o agente respondeu "Ana Ribeiro já contatou 1 lead".
 
+#### Ligar e desligar o app (custo)
+
+Deixe o app **desligado** quando não estiver em uso e ligue só antes da demo.
+- **Custo:** o app cobra por hora enquanto está ligado, mesmo sem acesso. O SQL Warehouse e o Genie só gastam quando alguém consulta, e o warehouse desliga sozinho quando fica parado.
+- **Desligar é seguro:** o código publicado, as permissões, a URL e os dados no Unity Catalog continuam iguais, inclusive o feedback de contatos.
+- **Ligar leva alguns minutos.** Faça isso uns 10 minutos antes da apresentação.
+
+```powershell
+# desligar
+databricks apps stop call-first --profile pessoal
+
+# ligar antes da demo
+databricks apps start call-first --profile pessoal
+databricks apps get call-first --profile pessoal   # esperar compute_status = ACTIVE
+```
+
+**Checklist do dia da demo:**
+1. Rode o pipeline com antecedência (`databricks bundle run call_first_pipeline -t dev --profile pessoal`). O compute serverless já chegou a esperar cerca de 25 minutos por máquina antes de começar.
+2. Ligue o app e abra a URL para confirmar que carregou.
+3. Faça uma pergunta ao agente antes da plateia, para ele já estar respondendo rápido.
+
 ## Estado atual (2026-11-17)
 
 | Item | Status |
