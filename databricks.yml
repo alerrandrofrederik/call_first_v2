@@ -1,0 +1,26 @@
+# Declarative Automation Bundle do Call First V2
+# Pipeline, jobs e app do PRD entram como arquivos em resources/*.yml
+bundle:
+  name: call_first_v2
+
+variables:
+  catalog:
+    description: Catálogo do Unity Catalog do projeto
+    default: call_first_v2
+  warehouse_id:
+    description: SQL Warehouse (Serverless Starter) usado por queries, dashboards e app
+    default: a50e6a998ebe9440
+  raw_volume_path:
+    description: Volume de landing dos CSVs
+    default: /Volumes/call_first_v2/bronze/raw
+
+include:
+  - resources/*.yml
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://dbc-302cbd09-e572.cloud.databricks.com
+      profile: pessoal
