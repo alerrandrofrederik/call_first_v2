@@ -17,6 +17,16 @@ variables:
 include:
   - resources/*.yml
 
+# Só código do projeto vai para o workspace
+sync:
+  exclude:
+    - .claude/**
+    - .venv/**
+    - data/**
+    - DataApp_de_referencia/**
+    - app/**          # o Data App tem bundle próprio (app/call-first/databricks.yml)
+    - genie/**
+
 targets:
   dev:
     mode: development

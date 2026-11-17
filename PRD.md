@@ -158,18 +158,18 @@ O time **nunca vai falar com todos**. Contratar 14× mais vendedores não é op�
 
 O contexto: todo dia os sistemas de origem (formulário do site, CRM e base cadastral) **exportam CSVs**, que são enviados ao Volume do Unity Catalog. A partir daí, tudo acontece no Databricks.
 
-**Local:** `/Volumes/call_first/landing/raw/`
+**Local:** `/Volumes/call_first_v2/bronze/raw/`. As três fontes ficam na mesma pasta, e o Auto Loader separa cada uma pelo **padrão do nome do arquivo**.
 
-| Pasta | Arquivo | Origem simulada | Conteúdo | Chave |
+| Padrão do arquivo | Tabela Bronze | Origem simulada | Conteúdo | Chave |
 |---|---|---|---|---|
-| `leads/` | `leads_AAAA-MM-DD.csv` | Formulário do site + LinkedIn + eventos | `lead_id`, nome, e-mail, telefone, cnpj, canal, campanha, **mensagem (texto livre)**, `recebido_em` | `lead_id`, e-mail |
-| `empresas/` | `empresas_AAAA-MM-DD.csv` | Base cadastral | cnpj, razão social, porte, segmento, nº de funcionários, UF | cnpj |
-| `historico/` | `oportunidades_AAAA-MM-DD.csv` | Export do CRM | cnpj, produto, status (ganha/perdida/aberta), valor, data | cnpj + oportunidade |
+| `leads_*.csv` | `bronze.leads` | Formulário do site + LinkedIn + eventos | `lead_id`, nome, e-mail, telefone, cnpj, canal, campanha, **mensagem (texto livre)**, `recebido_em` | `lead_id`, e-mail |
+| `empresas_*.csv` | `bronze.empresas` | Base cadastral | cnpj, razão social, porte, segmento, nº de funcionários, UF | cnpj |
+| `oportunidades_*.csv` | `bronze.oportunidades` | Export do CRM | cnpj, produto, status (ganha/perdida/aberta), valor, data | cnpj + oportunidade |
 
 **Arquivos do workshop**
-- 3 dias de histórico (~900 leads) já carregados antes da demo.
 - `leads_DEMO.csv` com 300 leads do "dia de hoje", subido **ao vivo**, contendo pegadinhas planejadas (seção 3.1).
-- `gabarito/intencao.csv` com o rótulo correto de cada mensagem.
+- `gabarito/intencao.csv` e `gabarito/entidades.csv` em `/Volumes/call_first_v2/bronze/gabarito/`, fora do `raw`, com o rótulo correto de cada mensagem.
+- ⏳ **Pendente:** 3 dias de histórico (~900 leads) com desfecho (vendeu ou não). Ainda não foram gerados e são pré-requisito do backtest (3.2).
 
 ## 2.5 As duas funções de IA
 
@@ -230,7 +230,8 @@ ai_extract(
   }',
   map('version', '2.1')
 ) AS entidades_raw
--- retorna VARIANT: entidades_raw:response:qtd_licencas::int
+-- retorna VARIANT; cada campo vem em {"value": ...}:
+-- entidades_raw:response.qtd_licencas.value::int
 ```
 
 **Salvaguardas**
@@ -244,7 +245,7 @@ ai_extract(
 ### Bronze: ingestão
 | ID | Requisito |
 |---|---|
-| RF-01 | Ler os CSVs de `leads/`, `empresas/` e `historico/` com **Auto Loader**, processando cada arquivo uma única vez. |
+| RF-01 | Ler os CSVs `leads_*`, `empresas_*` e `oportunidades_*` com **Auto Loader**, processando cada arquivo uma única vez. |
 | RF-02 | Guardar o dado como veio, com `_arquivo` e `_ingerido_em`. Linhas malformadas vão para `_rescued_data`, sem parar o pipeline. |
 
 ### Silver: tratamento
@@ -350,8 +351,8 @@ flowchart LR
     C2[empresas_*.csv]
     C3[oportunidades_*.csv]
   end
-  subgraph Databricks [Databricks · Unity Catalog · call_first]
-    V[(Volume<br/>landing.raw)]
+  subgraph Databricks [Databricks · Unity Catalog · call_first_v2]
+    V[(Volume<br/>bronze.raw)]
     B[Bronze<br/>Auto Loader]
     S[Silver<br/>limpo + unido]
     G[Gold<br/>ai_classify + ai_extract + nota]
@@ -426,6 +427,8 @@ flowchart LR
 
 ## 3.2 Backtest: a prova de valor
 
+> ⏳ **Pendente:** os dados atuais não têm histórico de leads com desfecho. O backtest depende de gerar esses dias em `gerar_csvs.py`.
+
 Aplicar a nota aos 3 dias de histórico, cujo desfecho é conhecido, e responder:
 
 > **Se tivéssemos contatado os 20 leads de maior nota em cada dia, quantas vendas teríamos feito, comparado aos 20 primeiros por ordem de chegada?**
@@ -443,7 +446,7 @@ Se o top 20 converte **≥ 4×** a ordem de chegada, a hipótese (1.6) está sus
 
 ### ✅ Portão 3 (entrega)
 - [ ] CA-01 a CA-12 aprovados
-- [ ] Backtest com top 20 ≥ 4× a ordem de chegada
+- [ ] Backtest com top 20 ≥ 4× a ordem de chegada (⏳ depende do histórico com desfecho)
 - [ ] Ensaio completo da demo dentro de 50 min
 
 ---

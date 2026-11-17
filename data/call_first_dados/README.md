@@ -4,12 +4,16 @@ Gerados por `gerar_csvs.py` (seed 42, data de referência 2026-11-17). Para o di
 `python gerar_csvs.py --data AAAA-MM-DD` (mesma estrutura, datas atualizadas).
 
 ## Onde subir
-| Pasta local | Destino no Volume |
+Todos os arquivos de `raw/` vão para a **mesma pasta** no Volume. O Auto Loader separa as fontes pelo nome do arquivo (`leads_*`, `empresas_*`, `oportunidades_*`).
+
+| Arquivo local | Destino no Volume |
 |---|---|
-| `raw/empresas/` | `/Volumes/call_first/landing/raw/empresas/` (antes da demo) |
-| `raw/historico/` | `/Volumes/call_first/landing/raw/historico/` (antes da demo) |
-| `raw/leads/leads_DEMO.csv` | `/Volumes/call_first/landing/raw/leads/` (**ao vivo**) |
-| `gabarito/` | fora do `raw` (ex.: `/Volumes/call_first/landing/gabarito/`) |
+| `raw/empresas_*.csv` | `/Volumes/call_first_v2/bronze/raw/` (antes da demo) |
+| `raw/oportunidades_*.csv` | `/Volumes/call_first_v2/bronze/raw/` (antes da demo) |
+| `raw/leads_DEMO.csv` | `/Volumes/call_first_v2/bronze/raw/` (**ao vivo**) |
+| `gabarito/*.csv` | `/Volumes/call_first_v2/bronze/gabarito/` (fora do `raw`) |
+
+> O `gerar_csvs.py` ainda grava em subpastas (`raw/leads/`, `raw/empresas/`, `raw/historico/`). Depois de gerar, mova os arquivos para `raw/`.
 
 ## O que tem em `leads_DEMO.csv` (300 linhas)
 - **290 leads únicos** por e-mail normalizado. Intenção após deduplicação: 33 compra_imediata · 117 avaliando · 60 suporte · 80 spam.

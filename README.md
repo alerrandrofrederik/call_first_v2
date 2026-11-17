@@ -201,31 +201,126 @@ Resultado obtido:
 | `orcamento_aprovado` | true | ✅ true |
 | `cargo` | Diretor Financeiro | ✅ |
 
-> ⚠️ No `ai_extract` 2.1, cada campo vem dentro de `{"value": ...}`. O caminho correto é `entidades:response.qtd_licencas.value::int`, e não `entidades:response:qtd_licencas::int` como está no PRD.
+
+> No `ai_extract` 2.1, cada campo vem dentro de `{"value": ...}`. O caminho correto é `entidades:response.qtd_licencas.value::int` (já corrigido no PRD).
+
+## Implementação (PRD M0 → M5)
+
+### M0 · Setup
+
+O arquivo [src/setup/00_setup.sql](src/setup/00_setup.sql) roda uma vez no SQL Warehouse e cria:
+- as funções `silver.cnpj_dv` e `silver.cnpj_valido`, que validam o dígito verificador do CNPJ;
+- o volume `bronze.gabarito`;
+- a tabela `gold.vendedores`, com os 4 vendedores;
+- a tabela `gold.feedback_contatos`, que o app usa.
+
+```powershell
+# rode os statements no SQL Editor, ou um a um com:
+databricks experimental aitools tools query "<statement>" --profile pessoal
+
+# gabarito (fora do raw, não é lido pelo Auto Loader)
+databricks fs cp data\call_first_dados\gabarito\intencao.csv  dbfs:/Volumes/call_first_v2/bronze/gabarito/ --profile pessoal
+databricks fs cp data\call_first_dados\gabarito\entidades.csv dbfs:/Volumes/call_first_v2/bronze/gabarito/ --profile pessoal
+```
+
+Teste: `cnpj_valido` acusa exatamente os **3 CNPJs inválidos** planejados nos dados ✅
+
+### M1 · Bronze (RF-01, RF-02)
+
+- O pipeline SDP serverless está em [resources/call_first.pipeline.yml](resources/call_first.pipeline.yml).
+- O código está em [src/pipeline/01_bronze.sql](src/pipeline/01_bronze.sql): três streaming tables com Auto Loader (`STREAM read_files`), que separam as fontes por `fileNamePattern`.
+
+```powershell
+databricks bundle validate --strict -t dev
+databricks bundle deploy -t dev
+databricks bundle run call_first_pipeline -t dev
+```
+
+| Critério | Resultado |
+|---|---|
+| CA-01: `leads_DEMO.csv` gera exatamente 300 registros; rodar de novo gera 0 | ✅ 300 → 300 na segunda execução |
+| CA-02: as 3 datas malformadas vão para `_rescued_data` | ✅ leads 0035, 0223, 0255 |
+| Empresas / oportunidades | 181 / 183 linhas |
+
+### M2 · Silver (RF-03 a RF-06)
+
+[src/pipeline/02_silver.sql](src/pipeline/02_silver.sql):
+- `silver.leads`: e-mail e CNPJ normalizados (`cnpj_ok` vem da função `cnpj_valido`) e deduplicação por e-mail, ficando a mensagem mais recente. Tem expectations de qualidade.
+- `silver.empresas`: base cadastral com CNPJ normalizado.
+- `silver.historico_empresa`: oportunidades agregadas por empresa (`ja_cliente`, produtos já comprados).
+- `silver.leads_enriquecidos`: lead + empresa + histórico.
+
+### M3 · IA + Gold (RF-07 a RF-12)
+
+- [src/pipeline/03_ia.sql](src/pipeline/03_ia.sql): `silver.leads_ia` é uma **streaming table**, então cada lead novo passa pela IA uma única vez (CA-11).
+  - Mensagem com menos de 5 caracteres vira spam sem chamar a IA.
+  - `ai_extract` só roda em `compra_imediata` e `avaliando`.
+- [src/pipeline/04_gold.sql](src/pipeline/04_gold.sql):
+  - `gold.leads_classificados`: nota 0–100 com os 4 componentes, motivo e próximo passo.
+  - `gold.fila_do_dia`: top 20, com 5 leads por vendedor em rodízio.
+
+```powershell
+databricks bundle deploy -t dev
+databricks bundle run call_first_pipeline -t dev
+# critérios de aceite: rode os blocos de src/validacao/ca_checks.sql
+```
+
+| Critério | Resultado |
+|---|---|
+| CA-03: 0 e-mails duplicados na Silver | ✅ 0 (300 → 290 únicos) |
+| CA-04: acurácia do `ai_classify` ≥ 85% | ✅ **98,0%** |
+| CA-05: ≥ 4 de 5 pegadinhas | ✅ **5 de 5** |
+| CA-06: herói 0258 → Atlas Gestão, 200, dezembro, orçamento true | ✅ e está em **1º na fila, nota 100** |
+| CA-07: nenhum spam/suporte na fila | ✅ |
+| CA-08: 20 leads, 5 por vendedor, com os 4 componentes | ✅ |
+| CA-11: nova execução sem arquivo novo não chama a IA | ✅ `silver.leads_ia` continua com 300 linhas |
+
+> ⚠️ **Erros da IA (6 de 300):** todos na mesma mensagem de spam, "Gostaria de anunciar no blog de vocês, qual o valor do post patrocinado?", que a IA classificou como `compra_imediata` porque a mensagem pergunta preço. Eles não entram na fila (nota 65), mas aparecem em "fora da fila", que mostra 19 leads em vez dos 13 do gabarito. Ajuste sugerido: deixar mais clara a descrição dos rótulos `compra_imediata` e `spam` e fazer full refresh de `silver.leads_ia`.
+
+### M4 · Genie + Data App (RF-13 a RF-16)
+
+**Genie Space** "Call First · Agente Comercial" (id `01f1e2bdc05010c2a60659fdfad9c0fe`), definido em [genie/space.json](genie/space.json):
+
+```powershell
+$env:MSYS_NO_PATHCONV=1   # só no Git Bash
+databricks workspace mkdirs /Workspace/Users/<você>/genie_spaces --profile pessoal
+databricks genie create-space a50e6a998ebe9440 "<conteúdo de genie/space.json>" --title "Call First · Agente Comercial" --parent-path /Workspace/Users/<você>/genie_spaces --profile pessoal
+```
+
+CA-10 ✅: as 5 perguntas do roteiro foram respondidas corretamente, tanto pela Conversation API quanto pela tela do app.
+
+**Data App** em AppKit, na pasta [app/call-first](app/call-first). Tem bundle próprio e roda como service principal, com o Genie em nome do usuário:
+- **Visão do Gestor:** hero com a frase do dia, 6 KPIs com a tabela de origem, funil, intenção × canal, lista de compra imediata fora da fila e a faixa "Da fonte à decisão".
+- **Fila do Dia:** filtro por vendedor; cards com nota, os 4 componentes, entidades extraídas, mensagem e próximo passo; botão **Marcar como contatado**, que faz `POST /api/feedback` → `gold.feedback_contatos`.
+- **Agente:** chat Genie com as 5 perguntas do roteiro.
+- **Plataforma:** regra da nota e tabelas do medalhão.
+
+```powershell
+cd app\call-first
+npm install
+# tipos das consultas (precisa do warehouse)
+$env:DATABRICKS_CONFIG_PROFILE="pessoal"; $env:DATABRICKS_WAREHOUSE_ID="a50e6a998ebe9440"
+npx @databricks/appkit generate-types --wait
+databricks apps validate --profile pessoal
+databricks apps deploy --skip-validation --profile pessoal
+```
+
+As permissões do service principal do app estão em [src/setup/01_grants_app.sql](src/setup/01_grants_app.sql): leitura das camadas e do gabarito, escrita só no feedback.
+
+URL: https://call-first-1835011522269435.aws.databricksapps.com
+
+CA-09 ✅: marquei o lead 0258 como contatado na tela. A linha apareceu em `gold.feedback_contatos`, o contador foi para "1 de 20" e o agente respondeu "Ana Ribeiro já contatou 1 lead".
 
 ## Estado atual (2026-11-17)
 
 | Item | Status |
 |---|---|
 | Databricks CLI v1.22.1 + perfil `pessoal` (OAuth) | ✅ |
-| Skills Databricks em `.claude/skills/` | ✅ |
-| Bundle `databricks.yml` (target `dev` → `pessoal`), validado | ✅ (seção 5) |
-| Catálogo `call_first_v2` com schemas `bronze` / `silver` / `gold` | ✅ |
-| Volume `call_first_v2.bronze.raw` com os 3 CSVs | ✅ |
-| SQL Warehouse "Serverless Starter Warehouse" (sobe sob demanda) | ✅ |
-| Databricks Apps e Genie API acessíveis | ✅ |
-| `.venv` criado, ainda sem dependências | ⚠️ |
-| PRD ainda cita `/Volumes/call_first/landing/raw/`; o caminho real é `/Volumes/call_first_v2/bronze/raw/` | ⚠️ |
-| Teste das AI Functions (`ai_classify` / `ai_extract`, versão 2.1) | ✅ (seção 9) |
-
-## Próximos passos
-
-```powershell
-# Dependências locais
-uv add databricks-sdk
-
-# Leitura do volume via SQL
-databricks experimental aitools tools query "SELECT * FROM read_files('/Volumes/call_first_v2/bronze/raw/leads_DEMO.csv', format => 'csv', header => true) LIMIT 5" --profile pessoal
-```
-
-Depois disso, o próximo passo é a **M2 · Bronze**: declarar o pipeline (Auto Loader lendo `${var.raw_volume_path}`) em `resources/` e rodar `databricks bundle deploy -t dev`.
+| Bundle `databricks.yml` (target `dev` → `pessoal`) | ✅ |
+| M0 · Setup | ✅ |
+| M1 · Bronze (CA-01, CA-02) | ✅ |
+| M2 · Silver (CA-03) | ✅ |
+| M3 · IA + Gold (CA-04 a CA-08, CA-11) | ✅ acurácia 98%, com 6 erros conhecidos de spam |
+| M4 · Genie + Data App (CA-09, CA-10) | ✅ app no ar |
+| Job com gatilho de chegada de arquivo (CA-12) | ⏳ |
+| M5 · Validação e ensaio | ⏳ (backtest pendente: falta histórico com desfecho) |

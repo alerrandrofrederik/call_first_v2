@@ -1,0 +1,14 @@
+resources:
+  pipelines:
+    call_first_pipeline:
+      name: call_first_v2_pipeline
+      catalog: ${var.catalog}
+      schema: bronze
+      serverless: true
+      channel: CURRENT
+      photon: true
+      libraries:
+        - glob:
+            include: ../src/pipeline/**
+      configuration:
+        raw_volume_path: ${var.raw_volume_path}
